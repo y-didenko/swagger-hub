@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: false   # never interrupt a live Pages deployment
 
 # ── One-time repo setup ──────────────────────────────────────────────────────
-# 1. Settings → Pages → Source: "GitHub Actions"
-# 2. Settings → Secrets → GH_PAT: fine-grained PAT, read access to openapi-specs
+# Settings → Pages → Source: "GitHub Actions"
+# No secrets needed — openapi-specs is public.
 # ────────────────────────────────────────────────────────────────────────────
 
 jobs:
@@ -32,7 +32,6 @@ jobs:
         id: fetch
         run: |
           sha=$(curl -fsSL \
-            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
             "https://api.github.com/repos/y-didenko/openapi-specs/commits/main" \
             | jq -r .sha)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -78,7 +77,6 @@ jobs:
           repository: y-didenko/openapi-specs
           ref: ${{ needs.detect-changes.outputs.specs_sha }}
           path: _specs
-          token: ${{ secrets.GH_PAT }}
 
       - name: Build static site
         run: |
