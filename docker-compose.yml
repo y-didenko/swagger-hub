@@ -1,0 +1,17 @@
+# Local dev — requires openapi-specs cloned next to swagger-hub:
+#
+#   ~/caterpillar/
+#   ├── openapi-specs/   ← spec files live here
+#   └── swagger-hub/     ← this repo
+#
+# Usage: docker compose up
+#
+services:
+  swagger-ui:
+    image: swaggerapi/swagger-ui:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../openapi-specs/services:/usr/share/nginx/html/specs:ro
+      - ./entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["sh", "/entrypoint.sh"]
