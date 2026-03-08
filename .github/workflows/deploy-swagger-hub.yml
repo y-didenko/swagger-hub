@@ -1,25 +1,16 @@
 name: Deploy Swagger Hub
 
 on:
-  # Pull: poll openapi-specs every hour — no webhook or CI logic needed there.
   schedule:
     - cron: "0 * * * *"
-
-  # Manual trigger — always deploys regardless of cached SHA (useful for testing).
   workflow_dispatch:
 
 concurrency:
   group: pages
-  cancel-in-progress: false   # never interrupt a live Pages deployment
-
-# ── One-time repo setup ──────────────────────────────────────────────────────
-# Settings → Pages → Source: "GitHub Actions"
-# No secrets needed — openapi-specs is public.
-# ────────────────────────────────────────────────────────────────────────────
+  cancel-in-progress: false
 
 jobs:
 
-  # ── 1. Has openapi-specs changed since the last successful deploy? ──────────
   detect-changes:
     name: Detect spec changes
     runs-on: ubuntu-latest
@@ -35,15 +26,13 @@ jobs:
             "https://api.github.com/repos/y-didenko/openapi-specs/commits/main" \
             | jq -r .sha)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "openapi-specs HEAD → $sha"
+          echo "openapi-specs HEAD -> $sha"
 
       - name: Restore deployed-SHA cache
         id: cache
         uses: actions/cache/restore@v4
         with:
           path: .deployed
-          # Exact key hit  = this SHA is already live → skip
-          # No hit         = new commits → deploy
           key: deployed-${{ steps.fetch.outputs.sha }}
 
       - name: Decide whether to deploy
@@ -51,16 +40,15 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "should_deploy=true"  >> "$GITHUB_OUTPUT"
-            echo "Reason: manual trigger — always deploying"
+            echo "Reason: manual trigger"
           elif [ "${{ steps.cache.outputs.cache-hit }}" = "true" ]; then
             echo "should_deploy=false" >> "$GITHUB_OUTPUT"
             echo "Already deployed: ${{ steps.fetch.outputs.sha }}"
           else
             echo "should_deploy=true"  >> "$GITHUB_OUTPUT"
-            echo "New SHA — deploying: ${{ steps.fetch.outputs.sha }}"
+            echo "New SHA: ${{ steps.fetch.outputs.sha }}"
           fi
 
-  # ── 2. Build static site with native swagger-ui (no Docker) ────────────────
   build:
     name: Build
     needs: detect-changes
@@ -68,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pages: write      # allows configure-pages to auto-enable Pages if not yet set up
+      pages: write
       id-token: write
 
     steps:
@@ -86,7 +74,6 @@ jobs:
         run: |
           mkdir -p dist
 
-          # ── swagger-ui assets (official dist, no customisation) ───────────
           npm install --prefix /tmp/sui swagger-ui-dist --no-fund --silent
           SUI=/tmp/sui/node_modules/swagger-ui-dist
           cp "$SUI/swagger-ui.css"                  \
@@ -98,44 +85,9 @@ jobs:
              "$SUI/favicon-32x32.png"               \
              dist/
 
-          # ── OpenAPI specs ─────────────────────────────────────────────────
           cp -r _specs/services dist/specs
 
-          # ── swagger-initializer.js ────────────────────────────────────────
-          # Auto-discovers every openapi.yaml/json under dist/specs/ and
-          # generates the native SwaggerUI multi-spec config. No hardcoded list.
-          cat > /tmp/gen.py << 'PYEOF'
-import os, glob, re
-
-specs = sorted(
-    glob.glob("dist/specs/**/openapi.yaml", recursive=True) +
-    glob.glob("dist/specs/**/openapi.json", recursive=True)
-)
-urls = []
-for path in specs:
-    rel   = "./" + path[len("dist/"):]          # ./specs/users/openapi.yaml
-    name  = os.path.basename(os.path.dirname(path))
-    label = " ".join(w.capitalize() for w in re.split(r"[-_]", name)) + " API"
-    urls.append(f'{{"url":"{rel}","name":"{label}"}}')
-
-primary = urls[0].split('"name":"')[1].rstrip('"}') if urls else ""
-
-with open("dist/swagger-initializer.js", "w") as f:
-    f.write(f"""window.onload = function() {{
-  window.ui = SwaggerUIBundle({{
-    urls: [{", ".join(urls)}],
-    "urls.primaryName": "{primary}",
-    dom_id: "#swagger-ui",
-    deepLinking: true,
-    presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
-    plugins: [SwaggerUIBundle.plugins.DownloadUrl],
-    layout: "StandaloneLayout"
-  }});
-}};
-""")
-print(f"swagger-initializer.js → {len(urls)} spec(s) registered")
-PYEOF
-          python3 /tmp/gen.py
+          python3 scripts/gen_initializer.py
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v4
@@ -145,7 +97,6 @@ PYEOF
         with:
           path: dist/
 
-  # ── 3. Deploy to GitHub Pages ───────────────────────────────────────────────
   deploy:
     name: Deploy to GitHub Pages
     needs: build
@@ -162,7 +113,6 @@ PYEOF
         id: deployment
         uses: actions/deploy-pages@v4
 
-  # ── 4. Cache deployed SHA so the next poll skips an unchanged spec set ──────
   record:
     name: Record deployed SHA
     needs: [detect-changes, build, deploy]
