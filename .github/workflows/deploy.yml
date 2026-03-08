@@ -66,6 +66,10 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.should_deploy == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write      # allows configure-pages to auto-enable Pages if not yet set up
+      id-token: write
 
     steps:
       - name: Checkout swagger-hub
