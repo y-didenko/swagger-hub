@@ -77,6 +77,7 @@ jobs:
           npm install --prefix /tmp/sui swagger-ui-dist --no-fund --silent
           SUI=/tmp/sui/node_modules/swagger-ui-dist
           cp "$SUI/swagger-ui.css"                  \
+             "$SUI/index.css"                       \
              "$SUI/swagger-ui-bundle.js"            \
              "$SUI/swagger-ui-standalone-preset.js" \
              "$SUI/index.html"                      \
