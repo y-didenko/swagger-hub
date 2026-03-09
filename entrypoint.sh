@@ -4,20 +4,19 @@ set -e
 SPECS_DIR="/usr/share/nginx/html/specs"
 INIT_JS="/usr/share/nginx/html/swagger-initializer.js"
 
-# Auto-discover every openapi.yaml / openapi.json under SPECS_DIR
-# and build the SwaggerUI urls array — no hardcoded list needed.
 urls=""
 primary_name=""
 
-for f in $(find "$SPECS_DIR" \( -name "openapi.yaml" -o -name "openapi.json" \) 2>/dev/null | sort); do
+for f in $(find "$SPECS_DIR" -name "*-v[0-9]*-oas.yaml" 2>/dev/null | sort); do
   rel=".${f#/usr/share/nginx/html}"
-  dir=$(basename "$(dirname "$f")")
-  # kebab-case / snake_case → Title Case  (e.g. "my-service" → "My Service API")
-  label=$(echo "$dir" | sed 's/[-_]/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2)); print}')
-  entry="{\"url\":\"${rel}\",\"name\":\"${label} API\"}"
+  filename=$(basename "$f")
+  name_part=$(echo "$filename" | sed 's/-v[0-9]*-oas\.yaml$//')
+  version=$(echo "$filename" | sed 's/.*-\(v[0-9]*\)-oas\.yaml$/\1/')
+  label=$(echo "$name_part" | sed 's/[-_]/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2)); print}')
+  entry="{\"url\":\"${rel}\",\"name\":\"${label} ${version}\"}"
   if [ -z "$urls" ]; then
     urls="$entry"
-    primary_name="${label} API"
+    primary_name="${label} ${version}"
   else
     urls="${urls},${entry}"
   fi

@@ -1,5 +1,2 @@
-# Injected by CI from openapi-specs — not part of this repo
-services/
 _specs/
-.deployed
 node_modules/

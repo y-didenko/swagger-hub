@@ -1,14 +1,15 @@
 import os, glob, re
 
-specs = sorted(
-    glob.glob("dist/specs/**/openapi.yaml", recursive=True) +
-    glob.glob("dist/specs/**/openapi.json", recursive=True)
-)
+specs = sorted(glob.glob("dist/specs/**/*-v[0-9]*-oas.yaml", recursive=True))
 urls = []
 for path in specs:
-    rel   = "./" + path[len("dist/"):]
-    name  = os.path.basename(os.path.dirname(path))
-    label = " ".join(w.capitalize() for w in re.split(r"[-_]", name)) + " API"
+    filename = os.path.basename(path)
+    m = re.match(r'^(.+)-(v\d+)-oas\.yaml$', filename)
+    if m:
+        label = " ".join(w.capitalize() for w in re.split(r"[-_]", m.group(1))) + f" {m.group(2)}"
+    else:
+        label = os.path.splitext(filename)[0]
+    rel = "./" + path[len("dist/"):]
     urls.append(f'{{"url":"{rel}","name":"{label}"}}')
 
 primary = urls[0].split('"name":"')[1].rstrip('"}') if urls else ""
