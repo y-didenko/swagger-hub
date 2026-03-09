@@ -12,6 +12,6 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ../openapi-specs/services:/usr/share/nginx/html/specs:ro
+      - ../openapi-specs:/usr/share/nginx/html/specs:ro
       - ./entrypoint.sh:/entrypoint.sh:ro
     entrypoint: ["sh", "/entrypoint.sh"]

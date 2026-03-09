@@ -86,7 +86,7 @@ jobs:
              "$SUI/favicon-32x32.png"               \
              dist/
 
-          cp -r _specs/services dist/specs
+          cp -r _specs/. dist/specs && rm -rf dist/specs/.git
 
           python3 scripts/gen_initializer.py
 
