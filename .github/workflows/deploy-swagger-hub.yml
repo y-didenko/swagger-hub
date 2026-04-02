@@ -1,9 +1,18 @@
-name: Deploy Swagger Hub
+name: OpenAPI Portal + API Test Cases
 
 on:
   schedule:
     - cron: "0 * * * *"
   workflow_dispatch:
+    inputs:
+      ai_provider:
+        description: "AI provider for test-case generation (mock | github-models)"
+        required: false
+        default: "mock"
+      force_regenerate:
+        description: "Force regeneration of all specs, ignoring the registry (true | false)"
+        required: false
+        default: "false"
 
 concurrency:
   group: pages
@@ -11,6 +20,12 @@ concurrency:
 
 jobs:
 
+  # ---------------------------------------------------------------------------
+  # Job: detect-changes
+  # Checks whether the openapi-specs repo has a new commit since the last
+  # successful deployment. Skips the rest of the pipeline on a cache hit
+  # (unless triggered manually).
+  # ---------------------------------------------------------------------------
   detect-changes:
     name: Detect spec changes
     runs-on: ubuntu-latest
@@ -23,6 +38,7 @@ jobs:
         id: fetch
         run: |
           sha=$(curl -fsSL \
+            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
             "https://api.github.com/repos/y-didenko/openapi-specs/commits/main" \
             | jq -r .sha)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -49,8 +65,15 @@ jobs:
             echo "New SHA: ${{ steps.fetch.outputs.sha }}"
           fi
 
+  # ---------------------------------------------------------------------------
+  # Job: build  (job1)
+  # Fetches OpenAPI specs, builds the Swagger UI static site, generates a
+  # manifest of all specs, and uploads two artifacts:
+  #   1. pages-artifact  — consumed by the deploy job
+  #   2. testgen-input   — consumed by the generate-api-testcases job
+  # ---------------------------------------------------------------------------
   build:
-    name: Build
+    name: Build Swagger Portal
     needs: detect-changes
     if: needs.detect-changes.outputs.should_deploy == 'true'
     runs-on: ubuntu-latest
@@ -69,6 +92,10 @@ jobs:
           repository: y-didenko/openapi-specs
           ref: ${{ needs.detect-changes.outputs.specs_sha }}
           path: _specs
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Install Python dependencies
+        run: pip install pyyaml --quiet
 
       - name: Build static site
         run: |
@@ -90,6 +117,19 @@ jobs:
 
           python3 scripts/gen_initializer.py
 
+      - name: Generate OpenAPI manifest
+        run: |
+          python3 scripts/swagger/build_manifest.py \
+            --specs-dir dist/specs \
+            --output    data/manifests/openapi-manifest.json \
+            --source-commit "${{ needs.detect-changes.outputs.specs_sha }}"
+
+      - name: Stage testgen input artifact
+        run: |
+          mkdir -p testgen-staging/specs
+          cp -r dist/specs/. testgen-staging/specs/
+          cp data/manifests/openapi-manifest.json testgen-staging/manifest.json
+
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v4
 
@@ -98,6 +138,17 @@ jobs:
         with:
           path: dist/
 
+      - name: Upload testgen input artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: testgen-input
+          path: testgen-staging/
+          retention-days: 3
+
+  # ---------------------------------------------------------------------------
+  # Job: deploy
+  # Publishes the Swagger UI site to GitHub Pages.
+  # ---------------------------------------------------------------------------
   deploy:
     name: Deploy to GitHub Pages
     needs: build
@@ -114,6 +165,11 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
+  # ---------------------------------------------------------------------------
+  # Job: record
+  # Saves the deployed commit SHA to the Actions cache so that subsequent
+  # scheduled runs skip unchanged specs.
+  # ---------------------------------------------------------------------------
   record:
     name: Record deployed SHA
     needs: [detect-changes, build, deploy]
@@ -127,3 +183,80 @@ jobs:
         with:
           path: .deployed
           key: deployed-${{ needs.detect-changes.outputs.specs_sha }}
+
+  # ---------------------------------------------------------------------------
+  # Job: generate-api-testcases  (job2)
+  # Downloads the testgen-input artifact produced by the build job, detects
+  # which specs are new or changed (compared to the processing registry), and
+  # generates structured API test-case packs in markdown via an AI provider.
+  #
+  # AI provider is controlled by:
+  #   - workflow_dispatch input `ai_provider`  (interactive runs)
+  #   - repository variable   AI_PROVIDER      (scheduled runs, optional)
+  #   - default: "mock"
+  #
+  # For GitHub Models API (github-models mode) the job uses GITHUB_TOKEN.
+  # ---------------------------------------------------------------------------
+  generate-api-testcases:
+    name: Generate API Test Cases
+    needs: [detect-changes, build]
+    if: needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    env:
+      # Priority: workflow_dispatch input > repository variable > mock
+      AI_PROVIDER: ${{ github.event.inputs.ai_provider || vars.AI_PROVIDER || 'mock' }}
+
+    steps:
+      - name: Checkout swagger-hub
+        uses: actions/checkout@v4
+
+      - name: Install Python dependencies
+        run: pip install pyyaml --quiet
+
+      - name: Download testgen input artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: testgen-input
+          path: testgen-input/
+
+      - name: Restore processing registry
+        id: registry-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data/registry/processed-specs.json
+          key: testgen-registry-${{ github.run_number }}
+          restore-keys: testgen-registry-
+
+      - name: Run test-case generation
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FORCE_FLAG=""
+          if [ "${{ github.event.inputs.force_regenerate }}" = "true" ]; then
+            FORCE_FLAG="--force-all"
+          fi
+          python3 scripts/testgen/run_generation.py \
+            --manifest   testgen-input/manifest.json \
+            --specs-dir  testgen-input/specs \
+            --registry   data/registry/processed-specs.json \
+            --output-dir data/generated/testcases \
+            --provider   "$AI_PROVIDER" \
+            $FORCE_FLAG
+
+      - name: Save processing registry
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/registry/processed-specs.json
+          key: testgen-registry-${{ github.run_number }}
+
+      - name: Upload generated test cases
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-testcases
+          path: data/generated/testcases/
+          retention-days: 30
