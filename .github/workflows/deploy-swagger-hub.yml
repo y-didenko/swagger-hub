@@ -37,8 +37,9 @@ jobs:
       - name: Fetch latest commit SHA from openapi-specs
         id: fetch
         run: |
+          TOKEN="${{ secrets.GH_PAT || github.token }}"
           sha=$(curl -fsSL \
-            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
+            -H "Authorization: Bearer ${TOKEN}" \
             "https://api.github.com/repos/y-didenko/openapi-specs/commits/main" \
             | jq -r .sha)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -92,7 +93,7 @@ jobs:
           repository: y-didenko/openapi-specs
           ref: ${{ needs.detect-changes.outputs.specs_sha }}
           path: _specs
-          token: ${{ secrets.GH_PAT }}
+          token: ${{ secrets.GH_PAT || github.token }}
 
       - name: Install Python dependencies
         run: pip install pyyaml --quiet
