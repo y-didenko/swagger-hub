@@ -1,7 +1,8 @@
-name: Testgen — Generate API Test Cases
+name: "[PROTOTYPE] Testgen — Generate API Test Cases"
 
-# PROTOTYPE: independent workflow that picks up new/changed OpenAPI specs from
-# the openapi-specs repo and runs AI test-case generation only on those.
+# PROTOTYPE — manual dispatch only. Schedule trigger intentionally omitted so
+# this stays dormant until the filters are retargeted. See split-workflows-spec.md
+# for the migration plan.
 #
 # Architectural notes:
 #   - We never clone the openapi-specs monorepo. Spec discovery uses the
@@ -11,11 +12,10 @@ name: Testgen — Generate API Test Cases
 #   - State persists across runs via the testgen-registry-* Actions cache.
 #     This workflow is the ONLY writer of that cache.
 #   - No artifact handoff from portal.yml. The two workflows are decoupled.
+#
+# To promote off prototype: re-add the `schedule:` trigger below.
 
 on:
-  schedule:
-    # Daily at 03:00 UTC. Tune to your AI-cost / freshness trade-off.
-    - cron: "0 3 * * *"
   workflow_dispatch:
     inputs:
       ai_provider:

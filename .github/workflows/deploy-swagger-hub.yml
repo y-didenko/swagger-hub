@@ -1,8 +1,16 @@
-name: OpenAPI Portal + API Test Cases
+# =============================================================================
+# DEPRECATED — superseded by .github/workflows/portal.yml + testgen.yml.
+#
+# This monolithic workflow remains available for manual fallback only. Its
+# scheduled trigger has been removed so the new prototype workflows can be
+# adopted without double-publishing to Pages. Delete this file once the split
+# workflows are validated in production. See split-workflows-spec.md for the
+# migration plan.
+# =============================================================================
+
+name: "[DEPRECATED] OpenAPI Portal + API Test Cases"
 
 on:
-  schedule:
-    - cron: "0 * * * *"
   workflow_dispatch:
     inputs:
       ai_provider:

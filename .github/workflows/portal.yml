@@ -1,16 +1,15 @@
-name: Portal — Build & Deploy Swagger UI
+name: "[PROTOTYPE] Portal — Build & Deploy Swagger UI"
 
-# PROTOTYPE: trimmed half of the previous monolithic workflow. Owns only the
-# Swagger portal lifecycle (fetch active specs, build static site, deploy to
-# Pages). AI test-case generation moved to testgen.yml.
+# PROTOTYPE — manual dispatch only. Schedule trigger intentionally omitted so
+# this stays dormant until the filters are retargeted and the old monolith is
+# retired. See split-workflows-spec.md for the migration plan.
 #
-# When this is promoted off prototype:
+# To promote off prototype:
 #   - delete .github/workflows/deploy-swagger-hub.yml (the old monolith)
 #   - tighten the sparse-checkout patterns / retired-spec filter (see Build job)
+#   - re-add the `schedule:` trigger below
 
 on:
-  schedule:
-    - cron: "0 * * * *"
   workflow_dispatch:
 
 concurrency:
