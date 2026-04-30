@@ -1,0 +1,176 @@
+name: Portal — Build & Deploy Swagger UI
+
+# PROTOTYPE: trimmed half of the previous monolithic workflow. Owns only the
+# Swagger portal lifecycle (fetch active specs, build static site, deploy to
+# Pages). AI test-case generation moved to testgen.yml.
+#
+# When this is promoted off prototype:
+#   - delete .github/workflows/deploy-swagger-hub.yml (the old monolith)
+#   - tighten the sparse-checkout patterns / retired-spec filter (see Build job)
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # Coarse SHA-level short-circuit. Skip everything if openapi-specs HEAD has
+  # not advanced since the last successful deployment.
+  # ---------------------------------------------------------------------------
+  detect-changes:
+    name: Detect spec changes
+    runs-on: ubuntu-latest
+    outputs:
+      specs_sha:     ${{ steps.fetch.outputs.sha }}
+      should_deploy: ${{ steps.decide.outputs.should_deploy }}
+
+    steps:
+      - name: Fetch latest commit SHA from openapi-specs
+        id: fetch
+        run: |
+          TOKEN="${{ secrets.GH_PAT || github.token }}"
+          sha=$(curl -fsSL \
+            -H "Authorization: Bearer ${TOKEN}" \
+            "https://api.github.com/repos/y-didenko/openapi-specs/commits/main" \
+            | jq -r .sha)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "openapi-specs HEAD -> $sha"
+
+      - name: Restore deployed-SHA cache
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .deployed
+          key: deployed-${{ steps.fetch.outputs.sha }}
+
+      - name: Decide whether to deploy
+        id: decide
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_deploy=true"  >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.cache.outputs.cache-hit }}" = "true" ]; then
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            echo "Already deployed: ${{ steps.fetch.outputs.sha }}"
+          else
+            echo "should_deploy=true"  >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Build: sparse-checkout the openapi-specs repo (active spec files only),
+  # assemble the Swagger UI site, generate the manifest, upload Pages artifact.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build Swagger Portal
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Checkout swagger-hub
+        uses: actions/checkout@v4
+
+      # NOTE: at this monorepo's scale (~440 MB / 29k files), full clone is wasteful.
+      # We sparse-checkout only the spec files. Tune patterns + retired filter to
+      # the real repo layout before merging.
+      - name: Sparse checkout openapi-specs (active specs only)
+        uses: actions/checkout@v4
+        with:
+          repository: y-didenko/openapi-specs
+          ref: ${{ needs.detect-changes.outputs.specs_sha }}
+          path: _specs
+          token: ${{ secrets.GH_PAT || github.token }}
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          # PROTOTYPE FILTER — replace with the real active-spec pattern set.
+          # Negative patterns (leading `!`) exclude. Examples shown for the two
+          # most common retired/legacy conventions.
+          sparse-checkout: |
+            services/**/*-v[0-9]*-oas.yaml
+            services/**/*-v[0-9]*-oas.json
+            !**/_legacy/**
+            !**/deprecated/**
+
+      - name: Install Python dependencies
+        run: pip install pyyaml --quiet
+
+      - name: Build static site
+        run: |
+          mkdir -p dist
+
+          npm install --prefix /tmp/sui swagger-ui-dist --no-fund --silent
+          SUI=/tmp/sui/node_modules/swagger-ui-dist
+          cp "$SUI/swagger-ui.css"                  \
+             "$SUI/index.css"                       \
+             "$SUI/swagger-ui-bundle.js"            \
+             "$SUI/swagger-ui-standalone-preset.js" \
+             "$SUI/index.html"                      \
+             "$SUI/oauth2-redirect.html"            \
+             "$SUI/favicon-16x16.png"               \
+             "$SUI/favicon-32x32.png"               \
+             dist/
+
+          cp -r _specs/. dist/specs && rm -rf dist/specs/.git
+
+          python3 scripts/gen_initializer.py
+
+      - name: Generate OpenAPI manifest
+        run: |
+          python3 scripts/swagger/build_manifest.py \
+            --specs-dir dist/specs \
+            --output    dist/data/manifests/openapi-manifest.json \
+            --source-commit "${{ needs.detect-changes.outputs.specs_sha }}"
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/
+
+  # ---------------------------------------------------------------------------
+  # Deploy: atomic Pages publish.
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # ---------------------------------------------------------------------------
+  # Record: mark this SHA as deployed so future runs short-circuit on no-op.
+  # ---------------------------------------------------------------------------
+  record:
+    name: Record deployed SHA
+    needs: [detect-changes, build, deploy]
+    if: needs.build.result == 'success' && needs.deploy.result == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - run: echo "${{ needs.detect-changes.outputs.specs_sha }}" > .deployed
+
+      - uses: actions/cache/save@v4
+        with:
+          path: .deployed
+          key: deployed-${{ needs.detect-changes.outputs.specs_sha }}

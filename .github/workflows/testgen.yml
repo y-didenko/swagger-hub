@@ -1,0 +1,106 @@
+name: Testgen — Generate API Test Cases
+
+# PROTOTYPE: independent workflow that picks up new/changed OpenAPI specs from
+# the openapi-specs repo and runs AI test-case generation only on those.
+#
+# Architectural notes:
+#   - We never clone the openapi-specs monorepo. Spec discovery uses the
+#     GitHub Tree API (1 call returns all paths + git blob SHAs). Only the
+#     specs whose blob SHA differs from the registry are downloaded as raw
+#     blobs. Typical run: 0–50 small fetches, no full clone.
+#   - State persists across runs via the testgen-registry-* Actions cache.
+#     This workflow is the ONLY writer of that cache.
+#   - No artifact handoff from portal.yml. The two workflows are decoupled.
+
+on:
+  schedule:
+    # Daily at 03:00 UTC. Tune to your AI-cost / freshness trade-off.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      ai_provider:
+        description: "AI provider (mock | github-models)"
+        required: false
+        default: "mock"
+      force_regenerate:
+        description: "Re-fetch & re-generate all active specs (true | false)"
+        required: false
+        default: "false"
+
+concurrency:
+  group: testgen
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    name: Fetch changed specs and generate test cases
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      models: read
+
+    env:
+      AI_PROVIDER: ${{ github.event.inputs.ai_provider || vars.AI_PROVIDER || 'mock' }}
+      OPENAPI_SPECS_REPO: y-didenko/openapi-specs
+      OPENAPI_SPECS_REF: main
+
+    steps:
+      - name: Checkout swagger-hub (scripts only)
+        uses: actions/checkout@v4
+
+      - name: Install Python dependencies
+        run: pip install pyyaml --quiet
+
+      - name: Restore processing registry
+        uses: actions/cache/restore@v4
+        with:
+          path: data/registry/processed-specs.json
+          key: testgen-registry-${{ github.run_number }}
+          restore-keys: testgen-registry-
+
+      # Tree-API discovery + selective raw fetch. Writes:
+      #   - data/fetched/<source-path>          (only changed spec files)
+      #   - data/manifests/openapi-manifest.json (lean: only fetched entries)
+      #   - data/registry/processed-specs.json   (last_blob_sha updated for fetched)
+      - name: Fetch changed specs via GitHub API
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FORCE_FLAG=""
+          if [ "${{ github.event.inputs.force_regenerate }}" = "true" ]; then
+            FORCE_FLAG="--force-all"
+          fi
+          python3 scripts/testgen/fetch_via_api.py \
+            --repo       "$OPENAPI_SPECS_REPO" \
+            --ref        "$OPENAPI_SPECS_REF" \
+            --registry   data/registry/processed-specs.json \
+            --output-dir data/fetched \
+            --manifest   data/manifests/openapi-manifest.json \
+            $FORCE_FLAG
+
+      - name: Run test-case generation
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/testgen/run_generation.py \
+            --manifest   data/manifests/openapi-manifest.json \
+            --specs-dir  data/fetched \
+            --registry   data/registry/processed-specs.json \
+            --output-dir data/generated/testcases \
+            --provider   "$AI_PROVIDER"
+
+      - name: Save processing registry
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/registry/processed-specs.json
+          key: testgen-registry-${{ github.run_number }}
+
+      - name: Upload generated test cases
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-testcases
+          path: data/generated/testcases/
+          retention-days: 30
