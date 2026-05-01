@@ -199,9 +199,6 @@ def render_picker(entries: list[dict], groups: list[dict]) -> str:
          placeholder="Search {len(entries)} APIs..." autocomplete="off"
          aria-label="Search APIs">
   <datalist id="api-search-list"></datalist>
-  <select id="api-browser" aria-label="Pick an API">
-    <option value="">— Pick an API —</option>
-  </select>
   <span class="count" id="api-count">{len(entries)} APIs</span>
 </div>
 """.strip()
@@ -233,38 +230,21 @@ def render_picker_js(entries: list[dict], groups: list[dict]) -> str:
     setTimeout(function() {{ setSpec(url); }}, 100);
   }}
 
-  function buildOption(value, text, dataName) {{
-    const o = document.createElement('option');
-    o.value = value;
-    o.textContent = text;
-    if (dataName) o.dataset.name = dataName;
-    return o;
-  }}
-
   function rebuild(activeCatId) {{
     const datalist = document.getElementById('api-search-list');
-    const browser = document.getElementById('api-browser');
     const search = document.getElementById('api-search');
     const count = document.getElementById('api-count');
     datalist.innerHTML = '';
-    browser.innerHTML = '';
-    browser.appendChild(buildOption('', '— Pick an API —'));
 
     if (activeCatId === '_all') {{
-      // Show every category with its own optgroup; datalist values include the
-      // category name so search can match either the API or the group.
-      let total = 0;
+      // Datalist values include the category name so search can match either
+      // the API label or the group name.
       for (const cat of CATEGORIES) {{
-        const grp = document.createElement('optgroup');
-        grp.label = cat.name + ' (' + cat.specs.length + ')';
         for (const spec of cat.specs) {{
           const dopt = document.createElement('option');
           dopt.value = spec.label + ' — ' + cat.name;
           datalist.appendChild(dopt);
-          grp.appendChild(buildOption(spec.url, spec.label, spec.label));
-          total++;
         }}
-        browser.appendChild(grp);
       }}
       search.placeholder = 'Search ' + TOTAL_APIS + ' APIs...';
       count.textContent = TOTAL_APIS + ' APIs';
@@ -275,7 +255,6 @@ def render_picker_js(entries: list[dict], groups: list[dict]) -> str:
         const dopt = document.createElement('option');
         dopt.value = spec.label;
         datalist.appendChild(dopt);
-        browser.appendChild(buildOption(spec.url, spec.label, spec.label));
       }}
       search.placeholder = 'Search ' + cat.specs.length + ' APIs in ' + cat.name + '...';
       count.textContent = cat.specs.length + ' / ' + TOTAL_APIS + ' APIs';
@@ -304,7 +283,6 @@ def render_picker_js(entries: list[dict], groups: list[dict]) -> str:
   document.addEventListener('DOMContentLoaded', function() {{
     const category = document.getElementById('api-category');
     const search = document.getElementById('api-search');
-    const browser = document.getElementById('api-browser');
 
     rebuild(category.value);
 
@@ -315,16 +293,7 @@ def render_picker_js(entries: list[dict], groups: list[dict]) -> str:
 
     search.addEventListener('change', function() {{
       const spec = specByValue(search.value, category.value);
-      if (spec) {{
-        setSpec(spec.url);
-        browser.value = spec.url;
-      }}
-    }});
-
-    browser.addEventListener('change', function() {{
-      if (!browser.value) return;
-      setSpec(browser.value);
-      search.value = '';
+      if (spec) setSpec(spec.url);
     }});
   }});
 }})();
