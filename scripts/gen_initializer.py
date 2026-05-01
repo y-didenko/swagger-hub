@@ -171,33 +171,10 @@ PICKER_CSS = """
     font-size: 0.8rem;
     margin-left: auto;
   }
-  #api-picker button {
-    font-size: 0.85rem;
-    padding: 0.45rem 0.75rem;
-    border: 1px solid #444;
-    border-radius: 4px;
-    background: #2a2a2a;
-    color: #ddd;
-    cursor: pointer;
-  }
-  #api-picker button:hover { background: #3a3a3a; }
-  /* Hide Swagger UI's own topbar (URL field + Explore button) — our picker
-     is the single source of navigation. */
-  .swagger-ui .topbar { display: none; }
-  /* Dark theme — apply an invert+hue-rotate filter to the Swagger UI content
-     only. The picker bar stays untouched. Images, SVGs, and code blocks get
-     a counter-invert so they render correctly. */
-  html[data-theme="dark"] body { background: #1b1b1b; }
-  html[data-theme="dark"] #swagger-ui {
-    filter: invert(0.92) hue-rotate(180deg);
-  }
-  html[data-theme="dark"] #swagger-ui img,
-  html[data-theme="dark"] #swagger-ui svg,
-  html[data-theme="dark"] #swagger-ui code,
-  html[data-theme="dark"] #swagger-ui pre,
-  html[data-theme="dark"] #swagger-ui .highlight-code {
-    filter: invert(1) hue-rotate(180deg);
-  }
+  /* Hide only the redundant URL form (URL input / "Select definition"
+     dropdown / Explore button) inside Swagger UI's topbar. The native
+     Logo and DarkModeToggle stay visible. */
+  .swagger-ui .topbar .download-url-wrapper { display: none; }
 </style>
 """
 
@@ -224,7 +201,6 @@ def render_picker(entries: list[dict], groups: list[dict]) -> str:
          aria-label="Search APIs">
   <datalist id="api-search-list"></datalist>
   <span class="count" id="api-count">{len(entries)} APIs</span>
-  <button type="button" id="api-theme" aria-label="Toggle theme">🌙 Dark</button>
 </div>
 """.strip()
 
@@ -305,23 +281,11 @@ def render_picker_js(entries: list[dict], groups: list[dict]) -> str:
     }}
   }}
 
-  function applyTheme(theme) {{
-    document.documentElement.dataset.theme = theme;
-    const btn = document.getElementById('api-theme');
-    if (btn) btn.textContent = theme === 'dark' ? '☀ Light' : '🌙 Dark';
-  }}
-
   document.addEventListener('DOMContentLoaded', function() {{
     const category = document.getElementById('api-category');
     const search = document.getElementById('api-search');
-    const themeBtn = document.getElementById('api-theme');
 
     rebuild(category.value);
-
-    // Initial theme: localStorage > prefers-color-scheme > light
-    const saved = localStorage.getItem('apiTheme');
-    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    applyTheme(saved || (prefersDark ? 'dark' : 'light'));
 
     category.addEventListener('change', function() {{
       rebuild(category.value);
@@ -332,14 +296,6 @@ def render_picker_js(entries: list[dict], groups: list[dict]) -> str:
       const spec = specByValue(search.value, category.value);
       if (spec) setSpec(spec.url);
     }});
-
-    if (themeBtn) {{
-      themeBtn.addEventListener('click', function() {{
-        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-        applyTheme(next);
-        localStorage.setItem('apiTheme', next);
-      }});
-    }}
   }});
 }})();
 </script>
