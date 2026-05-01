@@ -298,11 +298,38 @@ def render_picker_js(entries: list[dict], groups: list[dict]) -> str:
     }}
   }}
 
-  function relocateDarkModeToggle() {{
-    const toggle = document.querySelector('.swagger-ui .topbar .dark-mode-toggle');
+  function setupThemeProxy() {{
+    // We can't move the native DarkModeToggle out of the React tree —
+    // React 17+ event delegation listens at the #swagger-ui root, so a
+    // moved button's clicks never reach React's handler.
+    //
+    // Instead: leave the native button in place (display:none, still in DOM
+    // and still inside #swagger-ui), and put a *mirrored proxy* in our
+    // picker. Clicks on the proxy programmatically click the native button;
+    // a MutationObserver keeps the proxy's content in sync with the native
+    // one whenever React swaps its lightbulb / lightbulb-off icon.
+    const native = document.querySelector('.swagger-ui .topbar .dark-mode-toggle');
     const picker = document.getElementById('api-picker');
-    if (!toggle || !picker) return false;
-    picker.appendChild(toggle);
+    if (!native || !picker) return false;
+    if (picker.querySelector('.dark-mode-toggle')) return true;  // already proxied
+
+    const proxy = document.createElement('div');
+    proxy.className = 'dark-mode-toggle';
+    proxy.innerHTML = native.innerHTML;
+    picker.appendChild(proxy);
+
+    proxy.addEventListener('click', function(e) {{
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const nativeBtn = native.querySelector('button');
+      if (nativeBtn) nativeBtn.click();
+    }});
+
+    const observer = new MutationObserver(function() {{
+      proxy.innerHTML = native.innerHTML;
+    }});
+    observer.observe(native, {{ childList: true, subtree: true }});
+
     return true;
   }}
 
@@ -322,15 +349,14 @@ def render_picker_js(entries: list[dict], groups: list[dict]) -> str:
       if (spec) setSpec(spec.url);
     }});
 
-    // Swagger UI mounts asynchronously after window.onload. Watch the DOM
-    // and relocate the native DarkModeToggle into our picker as soon as it
-    // appears. The button's React click handler still works after the move.
-    if (!relocateDarkModeToggle()) {{
+    // Swagger UI mounts asynchronously after window.onload. Wait for the
+    // native DarkModeToggle to appear, then attach the click-forwarding
+    // proxy to our picker.
+    if (!setupThemeProxy()) {{
       const observer = new MutationObserver(function() {{
-        if (relocateDarkModeToggle()) observer.disconnect();
+        if (setupThemeProxy()) observer.disconnect();
       }});
       observer.observe(document.body, {{ childList: true, subtree: true }});
-      // Stop watching after 10s no matter what — Swagger UI failed to mount.
       setTimeout(function() {{ observer.disconnect(); }}, 10000);
     }}
   }});
@@ -343,32 +369,32 @@ def render_picker_js(entries: list[dict], groups: list[dict]) -> str:
 # Patch index.html
 # ---------------------------------------------------------------------------
 
+PATCH_BEGIN = "<!--swagger-hub:picker-begin-->"
+PATCH_END = "<!--swagger-hub:picker-end-->"
+
+
 def patch_index_html(path: str, css: str, picker_html: str, js: str) -> None:
     with open(path) as f:
         html = f.read()
 
-    if "api-picker" in html:
-        # Already patched — strip our previous injection and reapply (idempotent).
-        html = re.sub(
-            r"<style>\s*body \{ margin: 0; \}\s*#api-picker.*?</style>",
-            "", html, count=1, flags=re.DOTALL,
-        )
-        html = re.sub(
-            r'<div id="api-picker">.*?</div>\s*',
-            "", html, count=1, flags=re.DOTALL,
-        )
-        html = re.sub(
-            r"<script>\s*\(function\(\) \{\s*const SEARCH_MAP.*?</script>",
-            "", html, count=1, flags=re.DOTALL,
-        )
+    # Idempotent: strip any prior injections (CSS / HTML / JS) by their
+    # comment markers, then re-apply.
+    html = re.sub(
+        re.escape(PATCH_BEGIN) + r".*?" + re.escape(PATCH_END),
+        "", html, flags=re.DOTALL,
+    )
 
-    html = html.replace("</head>", css + "</head>", 1)
+    css_block = f"{PATCH_BEGIN}{css}{PATCH_END}"
+    picker_block = f"{PATCH_BEGIN}{picker_html}{PATCH_END}"
+    js_block = f"{PATCH_BEGIN}{js}{PATCH_END}"
+
+    html = html.replace("</head>", css_block + "</head>", 1)
     html = html.replace(
         '<div id="swagger-ui"></div>',
-        picker_html + '\n<div id="swagger-ui"></div>',
+        picker_block + '\n<div id="swagger-ui"></div>',
         1,
     )
-    html = html.replace("</body>", js + "\n</body>", 1)
+    html = html.replace("</body>", js_block + "\n</body>", 1)
 
     with open(path, "w") as f:
         f.write(html)
