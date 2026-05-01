@@ -178,92 +178,154 @@ PICKER_CSS = """
 """
 
 
-def render_select(groups: list[dict]) -> str:
-    parts = ['<select id="api-browser" aria-label="Browse APIs by category">']
+def render_category_select(groups: list[dict], total: int) -> str:
+    """Top-level category filter dropdown."""
+    parts = ['<select id="api-category" aria-label="Filter by category">']
+    parts.append(f'  <option value="_all">All categories ({total})</option>')
     for g in groups:
-        # Escape minimal HTML-special chars in category name
         name = g["name"].replace("&", "&amp;")
-        parts.append(f'  <optgroup label="{name} ({len(g["specs"])})">')
-        for spec in g["specs"]:
-            parts.append(
-                f'    <option value="{spec["url"]}" data-name="{spec["label"]}">'
-                f'{spec["label"]}</option>'
-            )
-        parts.append("  </optgroup>")
+        parts.append(f'  <option value="{g["id"]}">{name} ({len(g["specs"])})</option>')
     parts.append("</select>")
     return "\n".join(parts)
 
 
-def render_datalist(groups: list[dict]) -> str:
-    parts = ['<datalist id="api-search-list">']
-    for g in groups:
-        name = g["name"].replace("&", "&amp;")
-        for spec in g["specs"]:
-            value = f'{spec["label"]} — {name}'
-            parts.append(f'  <option value="{value}">')
-    parts.append("</datalist>")
-    return "\n".join(parts)
-
-
 def render_picker(entries: list[dict], groups: list[dict]) -> str:
-    select_html = render_select(groups)
-    datalist_html = render_datalist(groups)
+    category_html = render_category_select(groups, len(entries))
     return f"""
 <div id="api-picker">
-  <label for="api-search">API:</label>
+  <label for="api-category">Category:</label>
+  {category_html}
   <input type="search" list="api-search-list" id="api-search"
          placeholder="Search {len(entries)} APIs..." autocomplete="off"
          aria-label="Search APIs">
-  {datalist_html}
-  {select_html}
-  <span class="count">{len(entries)} APIs</span>
+  <datalist id="api-search-list"></datalist>
+  <select id="api-browser" aria-label="Pick an API">
+    <option value="">— Pick an API —</option>
+  </select>
+  <span class="count" id="api-count">{len(entries)} APIs</span>
 </div>
 """.strip()
 
 
 def render_picker_js(entries: list[dict], groups: list[dict]) -> str:
-    """Build the search-value → {url, name} map and the wire-up JS."""
-    search_map: dict[str, dict] = {}
-    for g in groups:
-        cat_name = g["name"]
-        for spec in g["specs"]:
-            search_map[f'{spec["label"]} — {cat_name}'] = {
-                "url": spec["url"], "name": spec["label"],
-            }
+    """Emit a JS model of categories + specs and the rebuild logic."""
+    # Single source of truth for the front-end: ordered categories with their specs.
+    cats_data = [
+        {
+            "id": g["id"],
+            "name": g["name"],
+            "specs": [{"label": s["label"], "url": s["url"]} for s in g["specs"]],
+        }
+        for g in groups
+    ]
     return f"""
 <script>
 (function() {{
-  const SEARCH_MAP = {json.dumps(search_map)};
-  function setSpec(url, name) {{
+  const CATEGORIES = {json.dumps(cats_data)};
+  const TOTAL_APIS = {len(entries)};
+
+  function setSpec(url) {{
     if (window.ui && window.ui.specActions && window.ui.specActions.updateUrl) {{
       window.ui.specActions.updateUrl(url);
       window.ui.specActions.download(url);
       return;
     }}
-    // Swagger UI not yet ready — retry shortly.
-    setTimeout(function() {{ setSpec(url, name); }}, 100);
+    setTimeout(function() {{ setSpec(url); }}, 100);
   }}
+
+  function buildOption(value, text, dataName) {{
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = text;
+    if (dataName) o.dataset.name = dataName;
+    return o;
+  }}
+
+  function rebuild(activeCatId) {{
+    const datalist = document.getElementById('api-search-list');
+    const browser = document.getElementById('api-browser');
+    const search = document.getElementById('api-search');
+    const count = document.getElementById('api-count');
+    datalist.innerHTML = '';
+    browser.innerHTML = '';
+    browser.appendChild(buildOption('', '— Pick an API —'));
+
+    if (activeCatId === '_all') {{
+      // Show every category with its own optgroup; datalist values include the
+      // category name so search can match either the API or the group.
+      let total = 0;
+      for (const cat of CATEGORIES) {{
+        const grp = document.createElement('optgroup');
+        grp.label = cat.name + ' (' + cat.specs.length + ')';
+        for (const spec of cat.specs) {{
+          const dopt = document.createElement('option');
+          dopt.value = spec.label + ' — ' + cat.name;
+          datalist.appendChild(dopt);
+          grp.appendChild(buildOption(spec.url, spec.label, spec.label));
+          total++;
+        }}
+        browser.appendChild(grp);
+      }}
+      search.placeholder = 'Search ' + TOTAL_APIS + ' APIs...';
+      count.textContent = TOTAL_APIS + ' APIs';
+    }} else {{
+      const cat = CATEGORIES.find(function(c) {{ return c.id === activeCatId; }});
+      if (!cat) return;
+      for (const spec of cat.specs) {{
+        const dopt = document.createElement('option');
+        dopt.value = spec.label;
+        datalist.appendChild(dopt);
+        browser.appendChild(buildOption(spec.url, spec.label, spec.label));
+      }}
+      search.placeholder = 'Search ' + cat.specs.length + ' APIs in ' + cat.name + '...';
+      count.textContent = cat.specs.length + ' / ' + TOTAL_APIS + ' APIs';
+    }}
+  }}
+
+  function specByValue(value, activeCatId) {{
+    if (!value) return null;
+    if (activeCatId === '_all') {{
+      // Datalist values are "label — categoryName"
+      const sep = ' — ';
+      const idx = value.lastIndexOf(sep);
+      if (idx < 0) return null;
+      const label = value.slice(0, idx);
+      const catName = value.slice(idx + sep.length);
+      const cat = CATEGORIES.find(function(c) {{ return c.name === catName; }});
+      if (!cat) return null;
+      return cat.specs.find(function(s) {{ return s.label === label; }}) || null;
+    }} else {{
+      const cat = CATEGORIES.find(function(c) {{ return c.id === activeCatId; }});
+      if (!cat) return null;
+      return cat.specs.find(function(s) {{ return s.label === value; }}) || null;
+    }}
+  }}
+
   document.addEventListener('DOMContentLoaded', function() {{
+    const category = document.getElementById('api-category');
     const search = document.getElementById('api-search');
     const browser = document.getElementById('api-browser');
-    if (search) {{
-      search.addEventListener('change', function() {{
-        const entry = SEARCH_MAP[search.value];
-        if (entry) {{
-          setSpec(entry.url, entry.name);
-          if (browser) browser.value = entry.url;
-        }}
-      }});
-    }}
-    if (browser) {{
-      browser.addEventListener('change', function() {{
-        const opt = browser.options[browser.selectedIndex];
-        if (!opt || !opt.value) return;
-        const name = opt.getAttribute('data-name') || opt.textContent;
-        setSpec(opt.value, name);
-        if (search) search.value = '';
-      }});
-    }}
+
+    rebuild(category.value);
+
+    category.addEventListener('change', function() {{
+      rebuild(category.value);
+      search.value = '';
+    }});
+
+    search.addEventListener('change', function() {{
+      const spec = specByValue(search.value, category.value);
+      if (spec) {{
+        setSpec(spec.url);
+        browser.value = spec.url;
+      }}
+    }});
+
+    browser.addEventListener('change', function() {{
+      if (!browser.value) return;
+      setSpec(browser.value);
+      search.value = '';
+    }});
   }});
 }})();
 </script>
