@@ -171,10 +171,27 @@ PICKER_CSS = """
     font-size: 0.8rem;
     margin-left: auto;
   }
-  /* Hide only the redundant URL form (URL input / "Select definition"
-     dropdown / Explore button) inside Swagger UI's topbar. The native
-     Logo and DarkModeToggle stay visible. */
-  .swagger-ui .topbar .download-url-wrapper { display: none; }
+  /* Hide Swagger UI's native topbar entirely. The DarkModeToggle inside
+     it gets DOM-moved into our picker bar by the JS below. */
+  .swagger-ui .topbar { display: none; }
+  /* Re-style the moved DarkModeToggle to match the picker bar. */
+  #api-picker .dark-mode-toggle button {
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 0.4rem 0.55rem;
+    color: #ddd;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+  }
+  #api-picker .dark-mode-toggle button:hover { background: #3a3a3a; }
+  #api-picker .dark-mode-toggle svg {
+    fill: currentColor;
+    display: block;
+    width: 18px;
+    height: 18px;
+  }
 </style>
 """
 
@@ -281,6 +298,14 @@ def render_picker_js(entries: list[dict], groups: list[dict]) -> str:
     }}
   }}
 
+  function relocateDarkModeToggle() {{
+    const toggle = document.querySelector('.swagger-ui .topbar .dark-mode-toggle');
+    const picker = document.getElementById('api-picker');
+    if (!toggle || !picker) return false;
+    picker.appendChild(toggle);
+    return true;
+  }}
+
   document.addEventListener('DOMContentLoaded', function() {{
     const category = document.getElementById('api-category');
     const search = document.getElementById('api-search');
@@ -296,6 +321,18 @@ def render_picker_js(entries: list[dict], groups: list[dict]) -> str:
       const spec = specByValue(search.value, category.value);
       if (spec) setSpec(spec.url);
     }});
+
+    // Swagger UI mounts asynchronously after window.onload. Watch the DOM
+    // and relocate the native DarkModeToggle into our picker as soon as it
+    // appears. The button's React click handler still works after the move.
+    if (!relocateDarkModeToggle()) {{
+      const observer = new MutationObserver(function() {{
+        if (relocateDarkModeToggle()) observer.disconnect();
+      }});
+      observer.observe(document.body, {{ childList: true, subtree: true }});
+      // Stop watching after 10s no matter what — Swagger UI failed to mount.
+      setTimeout(function() {{ observer.disconnect(); }}, 10000);
+    }}
   }});
 }})();
 </script>
