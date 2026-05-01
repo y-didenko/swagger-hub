@@ -1,0 +1,323 @@
+# Category mapping for the unified Swagger UI portal.
+#
+# Conventions:
+#   - A spec listed in `members` of multiple categories appears in each of them
+#     (multi-category support — useful for cross-cutting APIs).
+#   - A spec NOT listed under any category falls into `default_category`.
+#   - The build step (scripts/gen_initializer.py) emits a warning per
+#     uncategorized spec and groups them under "Other / Uncategorized".
+
+default_category:
+  id: other
+  name: Other / Uncategorized
+
+categories:
+  - id: identity
+    name: Identity & Access
+    members:
+      - auth
+      - users
+      - sessions
+      - permissions
+      - roles
+      - mfa
+      - tokens
+      - oauth
+      - profiles
+      - directory
+      - sso
+      - audit
+      - identity-providers
+
+  - id: payments
+    name: Payments & Billing
+    members:
+      - payments
+      - transactions
+      - accounts
+      - ledger
+      - invoices
+      - billing
+      - subscriptions
+      - cards
+      - transfers
+      - fraud
+      - kyc
+      - statements
+      - currencies
+      - fees
+      - taxes
+      - refunds
+      - payouts
+      - reconciliation
+      - disputes
+
+  - id: ecommerce
+    name: E-commerce
+    members:
+      - orders
+      - products
+      - inventory
+      - checkout
+      - catalog
+      - cart
+      - returns-mgmt
+      - shipping-rates
+      - promotions
+      - coupons
+      - loyalty
+      - wishlist
+      - reviews
+      - recommendations
+      - vendors
+      - suppliers
+      - taxonomies
+      - gift-cards
+      - users   # cross-listed
+
+  - id: communication
+    name: Communication
+    members:
+      - notifications
+      - messages
+      - email
+      - sms
+      - chat
+      - webhooks
+      - push
+      - templates
+      - campaigns
+      - contacts
+      - threads
+      - conversations
+      - broadcasts
+
+  - id: content
+    name: Content & Media
+    members:
+      - cms
+      - articles
+      - blogs
+      - media
+      - assets
+      - files
+      - comments
+      - tags
+      - categories
+      - feeds
+      - translations
+
+  - id: hr
+    name: HR & People
+    members:
+      - employees
+      - payroll
+      - recruitment
+      - onboarding
+      - leave
+      - attendance
+      - performance
+      - compensation
+      - benefits
+      - training
+      - users   # cross-listed
+
+  - id: logistics
+    name: Logistics & Shipping
+    members:
+      - shipments
+      - warehouses
+      - tracking
+      - fleet
+      - drivers
+      - routes
+      - deliveries
+      - parcels
+      - customs
+      - freight
+
+  - id: travel
+    name: Travel & Hospitality
+    members:
+      - bookings
+      - hotels
+      - flights
+      - reservations
+      - itineraries
+      - rentals
+      - tours
+      - travel-transfers
+
+  - id: healthcare
+    name: Healthcare
+    members:
+      - patients
+      - appointments
+      - prescriptions
+      - diagnoses
+      - doctors
+      - clinics
+      - pharmacy
+      - claims
+      - lab-results
+      - vitals
+
+  - id: education
+    name: Education
+    members:
+      - students
+      - courses
+      - lessons
+      - enrollments
+      - grades
+      - assignments
+      - quizzes
+      - instructors
+      - classrooms
+      - class-schedules
+
+  - id: iot
+    name: IoT & Devices
+    members:
+      - devices
+      - sensors
+      - telemetry
+      - firmware
+      - alerts
+      - gateways
+      - automations
+      # `scenes` intentionally omitted → demonstrates the Uncategorized bucket
+
+  - id: devops
+    name: DevOps & Platform
+    members:
+      - builds
+      - deployments
+      - releases
+      - dev-projects
+      - repositories
+      - pipelines
+      - secrets
+      - environments
+      - incidents
+      - logs
+      - metrics
+      - runners
+      - audit   # cross-listed
+
+  - id: gaming
+    name: Gaming
+    members:
+      - players
+      - leaderboards
+      - matches
+      - achievements
+      - tournaments
+      - lobbies
+      - guilds
+      - missions
+
+  - id: realestate
+    name: Real Estate
+    members:
+      - properties
+      - listings
+      - leases
+      - tenants
+      - agents
+      - viewings
+      - mortgages
+      - valuations
+
+  - id: social
+    name: Social
+    members:
+      - posts
+      - friends
+      - follows
+      - likes
+      - groups
+      - events
+      - polls
+      - stories
+      - timeline
+      - mentions
+
+  - id: analytics
+    name: Analytics & Data
+    members:
+      - events-analytics
+      - funnels
+      - dashboards
+      - reports
+      - segments
+      - cohorts
+      - experiments
+      - data-exports
+
+  - id: platform
+    name: Internal Platform
+    members:
+      - feature-flags
+      - configs
+      - locks
+      - queues
+      - jobs
+      - audit-log
+      - healthchecks
+      - rate-limits
+      - quotas
+      - vault
+
+  - id: marketing
+    name: Marketing & CRM
+    members:
+      - leads
+      - opportunities
+      - deals
+      - crm-customers
+      - crm-accounts
+      - crm-pipelines
+      - activities
+      - surveys
+      - crm-segments
+      - journeys
+      - segments   # cross-listed
+
+  - id: food
+    name: Food & Delivery
+    members:
+      - restaurants
+      - menus
+      - dishes
+      - kitchens
+      - riders
+      - food-orders
+      - recipes
+      - allergens
+
+  - id: trading
+    name: Trading & Finance
+    members:
+      - portfolios
+      - positions
+      - trades
+      - quotes
+      - instruments
+      - watchlists
+      - trading-orders
+      - market-data
+      - accounts   # cross-listed
+
+  - id: business
+    name: Other Business
+    members:
+      - contracts
+      - signatures
+      - approvals
+      - workflows
+      - forms
+      - schedules
+      - locations
+      - permits
+      # `page-builder` intentionally omitted → demonstrates the Uncategorized bucket
