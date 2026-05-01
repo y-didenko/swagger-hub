@@ -171,6 +171,9 @@ PICKER_CSS = """
     font-size: 0.8rem;
     margin-left: auto;
   }
+  /* Hide Swagger UI's own topbar (URL field + Explore button) — our picker
+     is the single source of navigation. */
+  .swagger-ui .topbar { display: none; }
 </style>
 """
 
