@@ -1,0 +1,73 @@
+digraph harness {
+    rankdir=LR;
+    graph [fontname="Helvetica", bgcolor="white", nodesep=0.5, ranksep=0.7, splines=spline];
+    node  [fontname="Helvetica", shape=plaintext, style=""];
+    edge  [fontname="Helvetica", fontsize=11, color="#666666"];
+
+    catalog [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" BGCOLOR="#DAE8FC" COLOR="#6C8EBF" STYLE="ROUNDED">
+        <TR><TD ALIGN="CENTER"><B>CASE CATALOG</B><BR/><FONT POINT-SIZE="10">versioned in repo</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="11">~60 cases: generation rule<BR/>expected outcome · ADO test-case ID<BR/>+ shared field-mapping rules</FONT></TD></TR>
+      </TABLE>>];
+
+    allocate [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" BGCOLOR="#D5E8D4" COLOR="#82B366" STYLE="ROUNDED">
+        <TR><TD ALIGN="CENTER"><B>ALLOCATE ID BLOCK</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="11">DynamoDB atomic counter<BR/>reserve range up front<BR/>e.g. 991062–991122</FONT></TD></TR>
+      </TABLE>>];
+
+    generate [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" BGCOLOR="#D5E8D4" COLOR="#82B366" STYLE="ROUNDED">
+        <TR><TD ALIGN="CENTER"><B>GENERATE</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="11">parquet file per case<BR/>1–2 records, unique IDs<BR/>expected PK precomputed</FONT></TD></TR>
+      </TABLE>>];
+
+    upload [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" BGCOLOR="#D5E8D4" COLOR="#82B366" STYLE="ROUNDED">
+        <TR><TD ALIGN="CENTER"><B>UPLOAD</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="11">parquet files → S3 bucket</FONT></TD></TR>
+      </TABLE>>];
+
+    manifest [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" BGCOLOR="#FFF2CC" COLOR="#D6B656" STYLE="ROUNDED">
+        <TR><TD ALIGN="CENTER"><B>RUN MANIFEST</B> <FONT POINT-SIZE="10">(S3)</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="11">run ID · ID range<BR/>case → file → PK → ADO ID</FONT></TD></TR>
+      </TABLE>>];
+
+    blackbox [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" BGCOLOR="#F5F5F5" COLOR="#999999" STYLE="ROUNDED,DASHED">
+        <TR><TD ALIGN="CENTER"><B>DATA PIPELINES</B><BR/><FONT POINT-SIZE="10">black box — no access</FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="11">backend services transform,<BR/>enrich, route records<BR/><I>latency: seconds</I></FONT></TD></TR>
+      </TABLE>>];
+
+    dynamo [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" BGCOLOR="#F5F5F5" COLOR="#999999" STYLE="ROUNDED">
+        <TR><TD ALIGN="CENTER"><B>DYNAMODB</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="11">13 mapped fields · metadata<BR/>enriched quality-issue fields</FONT></TD></TR>
+      </TABLE>>];
+
+    verify [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" BGCOLOR="#D5E8D4" COLOR="#82B366" STYLE="ROUNDED">
+        <TR><TD ALIGN="CENTER"><B>POLL &amp; VERIFY</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="11">PartiQL, PK batches of ≤50<BR/>tier 1: delivered / absent<BR/>tier 2: field-mapping oracle<BR/>tier 3: expected quality issue</FONT></TD></TR>
+      </TABLE>>];
+
+    report [label=<
+      <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="8" BGCOLOR="#FFE6CC" COLOR="#D79B00" STYLE="ROUNDED">
+        <TR><TD ALIGN="CENTER"><B>REPORT</B></TD></TR>
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="11">ADO test run: outcome per case<BR/>artifacts: parquet · manifest<BR/>dynamo dumps · field diffs</FONT></TD></TR>
+      </TABLE>>];
+
+    catalog  -> allocate;
+    allocate -> generate;
+    generate -> upload;
+    upload   -> blackbox [style=dashed, color="#999999"];
+    blackbox -> dynamo   [style=dashed, color="#999999"];
+    dynamo   -> verify   [label="poll by expected PKs", dir=back];
+    verify   -> report;
+
+    generate -> manifest [style=dotted, arrowhead=none];
+    manifest -> verify   [style=dotted, label="drives verification"];
+
+    { rank=same; generate; manifest; }
+}
